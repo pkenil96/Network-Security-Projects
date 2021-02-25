@@ -225,51 +225,31 @@ other tools you might want (although the above are more than enough).
 
  
  1.10 Towards which ports were TCP connection attempts made? How many attempts per port?
- Ans - 
-         17260
-         19957
-         22272
-         31617
-         36350
-         36889
-         38720
-         39437
-         40341
-         40630
-         42035
-         42230
-         42497
-         42503
-         42533
-         42534
-         42990
-         43029
-         443
-         45552
-         465
-         47110
-         48734
-         48952
-         48955
-         49291
-         49294
-         49821
-         49836
-         52079
-         52724
-         54634
-         55528
-         55672
-         58460
-         58724
-         59019
-         59034
-         80
-         9100
-         9485
- 
+ Ans - 443: https
+       465: SMTPS
+       80: http
+       9100: Appsocket (printing protocol)
+       
+       Port number vs Frequency
+       443:  1
+       465:  1
+       80:   33
+       9100: 2
+       
        Command:
-       sudo tcpdump -n -r hw1.pcap  "tcp[tcpflags] & tcp-syn != 0" | cut -d' ' -f5 | cut -d'.' -f5 | cut -d':' -f1 | sort | uniq
+       sudo tcpdump -n -r hw1.pcap 'tcp[13] == 2' | cut -d' ' -f5 | cut -d':' -f1 | cut -d'.' -f5 | sort | uniq -c
+       
+       Comment:
+       The above command without "uniq -c" flag will list all the ports where connection attemps were made (with repitition). 
+       Adding "uniq -c" will give the frequency: uniuq port number.
+       
+       Terminal Output:
+       reading from file hw1.pcap, link-type EN10MB (Ethernet)
+       1 443
+       1 465
+       33 80
+       2 9100
+
  
  
  1.11 How many HTTP GET requests were made? Print the URLs of all HTTP requests for JPG files.
@@ -286,10 +266,14 @@ other tools you might want (although the above are more than enough).
        http://www.nature.com/news/2009/090527/images/459492a-i1.0.jpg
        /news/2009/090527/images/459492a-i1.0.jpg
        /news/2009/090527/images/459492a-i1.0.jpg
- 
+       
        Command(s):
        sudo tcpdump -n -r hw1.pcap '(tcp port 80) && (tcp[32:4] = 0x47455420)' | wc -l
        sudo tcpdump -n -r hw1.pcap -A '(tcp port 80) && (tcp[32:4] = 0x47455420)' | grep GET | rev | cut -d' ' -f2 | rev | grep jpg
+       
+       Comment:
+       'GET' in hex value is equal to '0x47455420'. So the above command says to pick the 4 bytes starting from 32nd byte and check if it
+       is equal to the value given above or not in order to filter out the GET packets. 
               
 
  1.12 When (date and time) was the first and last packet of the trace sent?
