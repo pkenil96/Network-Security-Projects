@@ -1,0 +1,589 @@
+CSE508: Network Security, Spring 2021
+
+Homework 1: Passive Network Monitoring
+-------------------------------------------------------------------------------
+
+Submission deadline: 2/26/2021 11:59pm EDT
+Submission through https://blackboard.stonybrook.edu
+
+In this assignment you will get familiar with passive network traffic
+monitoring and analysis. Tcpdump is probably the most popular and widely used
+passive network monitoring tool. It is built on top of the Libpcap packet
+capture library and can capture and display packet headers and payloads either
+from a network interface or a network trace file. Your task is to analyze a
+network trace file and answer some questions.
+
+
+0. Preparation
+
+Download the hw1.pcap trace file from the "Resources" page of Piazza.
+
+Use the following command to read the trace file: 
+tcpdump -n -r hw1.pcap | head
+
+-n skips the DNS resolution of IP addresses (faster output)
+
+The output is redirected to 'head' to avoid flooding the console - this is a
+good strategy while assembling your commands. Alternatively, you can use
+more(1) to scroll through the output, or you can redirect all output to a text
+file for further analysis.
+
+
+1. Network traffic analysis using tcpdump
+
+You can find the answers to all of the following questions using only tcpdump's
+man page and shell one-liners. You may find the following utilities useful: wc,
+grep, sed, awk, cut, head, tail, more, sort, uniq. You are free to use any
+other tools you might want (although the above are more than enough).
+
+ 1.1 How many packets does the trace contain?
+ Ans - 32616
+ 
+       Command:
+       tcpdump -n -r hw1.pcap | wc -l
+ 
+       Terminal output:
+       reading from file hw1.pcap, link-type EN10MB (Ethernet)
+       32616  312014 2788055
+  
+ 1.2 How many ARP packets and how many UDP packets?
+ Ans - 11304, 18334
+ 
+       Commands:
+       tcpdump -n -r hw1.pcap arp | wc -l
+       tcpdump -n -r hw1.pcap udp | wc -l
+ 
+       Terminal Output:
+       reading from file hw1.pcap, link-type EN10MB (Ethernet)
+       11304  101710  880747
+ 
+       reading from file hw1.pcap, link-type EN10MB (Ethernet)
+       18334  155783 1481424
+ 
+ 1.3 How many packets were exchanged between 91.189.90.41 and 192.168.0.200?
+ Ans - 6
+ 
+       Command:
+       tcpdump -n -r hw1.pcap src 91.189.90.41 and dst 192.168.0.200 | wc -l
+ 
+       Terminal Output:
+       reading from file hw1.pcap, link-type EN10MB (Ethernet)
+       6     132    1006
+ 
+ 
+ 1.4 Print the unique source IP addresses found in the trace.
+ Ans - 
+       Terminal Output:
+       reading from file hw1.pcap, link-type EN10MB (Ethernet)
+         0.0.0.0
+         122.154.101.54
+         1.234.31.20
+         130.75.16.5
+         159.148.96.184
+         169.254.56.55
+         192.168.0.1
+         192.168.0.10
+         192.168.0.11
+         192.168.0.12
+         192.168.0.2
+         192.168.0.200
+         192.168.0.3
+         192.168.0.5
+         192.168.0.6
+         192.168.0.7
+         194.168.4.100
+         216.137.63.121
+         216.137.63.137
+         46.51.197.88
+         46.51.197.89
+         62.252.170.81
+         62.252.170.91
+         87.230.23.162
+         87.98.246.8
+         91.189.88.33
+         91.189.89.88
+         91.189.90.40
+         91.189.90.41
+         91.189.91.14
+         91.189.91.15
+         91.189.92.190
+         92.240.68.152
+ 
+        Command:
+        tcpdump -n -r hw1.pcap ip | cut -d' ' -f3 | cut -d'.' -f1-4 | sort | uniq
+ 
+
+ 1.5 Print the unique 'private network' (according to RFC1918) source IP addresses found in the trace. 
+ Ans - 192.168.0.1
+       192.168.0.10
+       192.168.0.11
+       192.168.0.12
+       192.168.0.2
+       192.168.0.200
+       192.168.0.3
+       192.168.0.5
+       192.168.0.6
+       192.168.0.7
+       
+       Command:
+       sudo tcpdump -n -r hw1.pcap src 'net 10.0.0.0/8 or net 172.16.0.0/12' or net 192.168.0.0/16 | cut -d' ' -f3 | cut -d'.' -f1-4 | sort | uniq
+
+ 
+ 1.6 Print the unique destination IP addresses found in the trace.
+ Ans - 
+        122.154.101.54
+        1.234.31.20
+        130.75.16.5
+        159.148.96.184
+        169.254.255.255
+        192.168.0.12
+        192.168.0.200
+        192.168.0.255
+        194.168.4.100
+        216.137.63.121
+        216.137.63.137
+        224.0.0.22
+        224.0.0.251
+        224.0.0.252
+        239.255.255.250
+        255.255.255.255
+        46.51.197.88
+        46.51.197.89
+        62.252.170.81
+        62.252.170.91
+        87.230.23.162
+        87.98.246.8
+        91.189.88.33
+        91.189.89.88
+        91.189.90.40
+        91.189.90.41
+        91.189.91.14
+        91.189.91.15
+        91.189.92.190
+
+        Command:
+        sudo tcpdump -n -r hw1.pcap ip | cut -d' ' -f5 | cut -d':' -f1 | cut -d'.' -f1-4 | sort | uniq
+ 
+ 1.7 What are the top-5 TCP and top-5 UDP destination ports?
+ Ans - 
+       Top-5 TCP ports:
+       80
+       54634
+       49836
+       47110
+       40341
+       
+       Top-5 UDP ports:
+       1900
+       137
+       5355
+       5353
+       138
+       
+       Command(s):
+       sudo tcpdump -n -r hw1.pcap tcp | cut -d' ' -f5 | cut -d':' -f1 | cut -d'.' -f5 | sort | uniq -c | sort -n -r | head -5
+       sudo tcpdump -n -r hw1.pcap udp | cut -d' ' -f5 | cut -d':' -f1 | cut -d'.' -f5 | sort | uniq -c | sort -n -r | head -5
+       
+       Terminal output:
+       727 80
+       697 54634
+       346 49836
+       61 47110
+       36 40341
+       
+       13178 1900
+       1925 137
+       1516 5355
+       840 5353
+       399 138
+
+ 1.8 How many TCP packets have the SYN flag set?
+ Ans - 75
+ 
+       Command:
+       tcpdump -n -r hw1.pcap "tcp[tcpflags] & (tcp-syn) != 0" | wc -l
+       
+       Comments:
+       In order to check the SYN flag, we go to the 13th byte of the TCP header
+       which points to the TCP flags and the 2nd bit being set indicates SYN flag
+       is set or not.
+       
+       Terminal Output:
+       reading from file hw1.pcap, link-type EN10MB (Ethernet)
+       75
+
+ 
+ 1.9 How many TCP connection attempts were made?
+ Ans - 37
+ 
+       Command:
+       tcpdump -n -r hw1.pcap "tcp[13] == 2" | wc -l
+ 
+       Terminal Output:
+       reading from file hw1.pcap, link-type EN10MB (Ethernet)
+       37
+
+ 
+ 1.10 Towards which ports were TCP connection attempts made? How many attempts per port?
+ Ans - 
+         17260
+         19957
+         22272
+         31617
+         36350
+         36889
+         38720
+         39437
+         40341
+         40630
+         42035
+         42230
+         42497
+         42503
+         42533
+         42534
+         42990
+         43029
+         443
+         45552
+         465
+         47110
+         48734
+         48952
+         48955
+         49291
+         49294
+         49821
+         49836
+         52079
+         52724
+         54634
+         55528
+         55672
+         58460
+         58724
+         59019
+         59034
+         80
+         9100
+         9485
+ 
+       Command:
+       sudo tcpdump -n -r hw1.pcap  "tcp[tcpflags] & tcp-syn != 0" | cut -d' ' -f5 | cut -d'.' -f5 | cut -d':' -f1 | sort | uniq
+ 
+ 
+ 1.11 How many HTTP GET requests were made? Print the URLs of all HTTP requests for JPG files.
+ Ans - 94
+        
+       URL(s) of all HTTP request for JPG files:       
+       http://pic.leech.it/i/f166c/479246b0asttas.jpg
+       http://pic.leech.it/i/f166c/479246b0asttas.jpg
+       /i/f166c/479246b0asttas.jpg
+       /i/f166c/479246b0asttas.jpg
+       http://ecx.images-amazon.com/images/I/41oZ1XsiOAL._SL500_AA300_.jpg
+       http://ecx.images-amazon.com/images/I/41oZ1XsiOAL._SL500_AA300_.jpg
+       http://www.nature.com/news/2009/090527/images/459492a-i1.0.jpg
+       http://www.nature.com/news/2009/090527/images/459492a-i1.0.jpg
+       /news/2009/090527/images/459492a-i1.0.jpg
+       /news/2009/090527/images/459492a-i1.0.jpg
+ 
+       Command(s):
+       sudo tcpdump -n -r hw1.pcap '(tcp port 80) && (tcp[32:4] = 0x47455420)' | wc -l
+       sudo tcpdump -n -r hw1.pcap -A '(tcp port 80) && (tcp[32:4] = 0x47455420)' | grep GET | rev | cut -d' ' -f2 | rev | grep jpg
+              
+
+ 1.12 When (date and time) was the first and last packet of the trace sent?
+ Ans - First packet date and time:  2013-01-12 11:37:42.871346
+       Second packet date and time: 2013-01-14 13:27:03.691498
+ 
+       Command(s):
+       sudo tcpdump -n -r hw1.pcap -tttt | head -1
+       sudo tcpdump -n -r hw1.pcap -tttt | tail -1
+       
+       Terminal Output:
+       reading from file hw1.pcap, link-type EN10MB (Ethernet)
+       2013-01-12 11:37:42.871346 ARP, Request who-has 192.168.0.12 tell 192.168.0.1, length 46
+
+       reading from file hw1.pcap, link-type EN10MB (Ethernet)
+       2013-01-14 13:27:03.691498 ARP, Request who-has 192.168.0.12 tell 192.168.0.1, length 46
+
+
+ 1.13  What is the brand of the device that sent most of the packets? What is its IP address?
+ Ans - Mac address of the device that sent most packets: c4:3d:c7:17:6f:9b
+       
+       Brand name lookup using the URL: https://dnschecker.org/mac-lookup.php?query=c4%3A3d%3Ac7%3A17%3A6f%3A9b
+       Brand name: Netgear
+       
+       Command:
+       sudo tcpdump -n -r hw1.pcap -e | cut -d' ' -f2 | sort | uniq -c | sort -n -r | head -1 
+       (The (e) flag will give link-level header, from which mac address can be extracted.)
+       
+       Comments:
+       We first extract the mac address from the pcap, sort them and get the unique entries and
+       sort the unique entries again. The first entry in the resulting output will give the mac
+       address of the device that sent most of the packets.
+       
+       Terminal Output:
+       reading from file hw1.pcap, link-type EN10MB (Ethernet)
+       19743 c4:3d:c7:17:6f:9b
+       
+       Ip address of the given mac:
+       192.168.0.1
+       
+       Command:
+       sudo tcpdump -n -r hw1.pcap ether src c4:3d:c7:17:6f:9b | head -1
+       
+       Terminal Output:
+       reading from file hw1.pcap, link-type EN10MB (Ethernet)
+       11:37:42.871346 ARP, Request who-has 192.168.0.12 tell 192.168.0.1, length 46
+
+       
+ 1.14 Report the distribution of Ethernet packet sizes (how many packets of size
+      X exist in the trace, for all values of X in the trace).
+ Ans - Finding the distribution of ethernet packet size vs frequency is done using the python script hw1q14.py
+       
+       Storing the packet size infromation in the file hw1q14.txt
+       sudo tcpdump -n -r hw1.pcap -e | grep length > hw1q14.txt
+       
+        Packet Size	Frequency
+        60 		     12190
+        342 		 326
+        398 		 85
+        326 		 85
+        318 		 86
+        362 		 86
+        338 		 88
+        392 		 87
+        405 		 2758
+        331 		 2773
+        63 		     232
+        395 		 2759
+        340 		 2749
+        92 		     1740
+        64 		     887
+        243 		 279
+        66 		     1046
+        84 		     43
+        350 		 6
+        110 		 180
+        219 		 39
+        231 		 36
+        249 		 56
+        175 		 146
+        1033 		 40
+        666 		 12
+        698 		 22
+        167 		 62
+        165 		 60
+        390 		 87
+        394 		 86
+        386 		 88
+        475 		 164
+        484 		 165
+        541 		 155
+        527 		 158
+        539 		 162
+        555 		 161
+        81 		     54
+        816 		 8
+        322 		 4
+        330 		 10
+        282 		 6
+        127 		 15
+        602 		 32
+        315 		 24
+        154 		 10
+        551 		 17
+        42 		     24
+        74 		     87
+        171 		 1
+        302 		 15
+        91 		     341
+        76 		     6
+        120 		 121
+        177 		 4
+        72 		     1
+        88 		     5
+        229 		 2
+        1514 		 1034
+        690 		 1
+        207 		 1
+        252 		 2
+        233 		 3
+        479 		 1
+        54 		     1
+        178 		 1
+        79 		     4
+        95 		     2
+        223 		 1
+        518 		 1
+        195 		 1
+        77 		     2
+        93 		     2
+        129 		 2
+        111 		 2
+        257 		 2
+        246 		 22
+        628 		 5
+        309 		 2
+        593 		 2
+        298 		 3
+        344 		 3
+        305 		 2
+        429 		 1
+        294 		 2
+        636 		 2
+        346 		 4
+        254 		 4
+        321 		 2
+        310 		 2
+        1212 		 2
+        502 		 2
+        345 		 4
+        347 		 1
+        245 		 16
+        621 		 2
+        630 		 2
+        255 		 2
+        598 		 2
+        546 		 2
+        268 		 2
+        640 		 1
+        269 		 3
+        248 		 9
+        614 		 2
+        265 		 2
+        596 		 1
+        611 		 2
+        267 		 4
+        247 		 3
+        613 		 5
+        264 		 6
+        329 		 5
+        544 		 1
+        610 		 6
+        615 		 2
+        266 		 2
+        612 		 2
+        548 		 1
+        261 		 2
+        704 		 2
+        607 		 2
+        506 		 1
+        332 		 10
+        333 		 6
+        678 		 1
+        418 		 2
+        730 		 1
+        328 		 7
+        412 		 1
+        746 		 1
+        244 		 4
+        168 		 12
+        106 		 4
+        417 		 1
+        124 		 4
+        478 		 2
+        497 		 3
+        75 		     8
+        170 		 4
+        90 		     13
+        396 		 1
+        1469 		 1
+        694 		 1
+        383 		 2
+        446 		 1
+        374 		 1
+        552 		 1
+        550 		 2
+        372 		 1
+        433 		 1
+        624 		 2
+        68 		     8
+        65 		     4
+        476 		 10
+        485 		 10
+        528 		 10
+        542 		 10
+        540 		 10
+        556 		 10
+        288 		 2
+        1035 		 4
+        62 		     13
+        70 		     3
+        144 		 1
+        220 		 2
+        119 		 28
+        284 		 9
+        817 		 5
+        335 		 1
+        1034 		 6
+        202 		 17
+        460 		 33
+        69 		     6
+        125 		 7
+        428 		 1
+        679 		 1
+        1170 		 1
+        312 		 1
+        608 		 1
+        979 		 1
+        1162 		 1
+        317 		 1
+        482 		 1
+        389 		 1
+        535 		 1
+        306 		 1
+        1179 		 1
+        308 		 1
+        926 		 1
+        752 		 1
+        432 		 1
+        1102 		 1
+        320 		 1
+        588 		 1
+        592 		 1
+        952 		 1
+        1218 		 1
+        568 		 1
+        760 		 1
+        601 		 1
+        156 		 1
+        590 		 2
+        142 		 11
+        107 		 10
+        307 		 12
+        149 		 7
+        85 		     4
+        94 		     2
+        89 		     4
+        82 		     4
+        87 		    14
+        105 		 2
+        184 		 2
+        208 		 2
+        489 		13
+        236          2
+        
+   Python Script used to find the distribution:
+    
+    if __name__ == '__main__':
+        packet_info = open('hw1q14.txt','r')
+        reader = packet_info.read().strip()
+        packets = reader.split('\n')
+        packet_size_map = {}
+        for packet in packets:
+            sub = (packet[packet.find('length ')+len('length '):])
+            length = int(sub[:sub.find(':')])
+            if length in packet_size_map:
+                packet_size_map[length] += 1
+            else:
+                packet_size_map[length] = 1
+        print ('Packet Size\tFrequency')
+        for packet_size in packet_size_map:
+            print (packet_size,'\t\t', packet_size_map[packet_size])
+
+2. What to submit
+
+A plain ASCII text file with the answers to the above questions, along with
+the command/script/approach used to find them.
