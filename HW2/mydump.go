@@ -85,10 +85,8 @@ func getAllLayers(packet gopacket.Packet){
 	}
 }
 
-//net.HardwareAddr, net.HardwareAddr, layers.EthernetType
 func getEthernetLayer(packet gopacket.Packet) (string, string, string){
- //(net.HardwareAddr, net.HardwareAddr, layers.EthernetType){
-	ethernetLayer := packet.Layer(layers.LayerTypeEthernet)
+ 	ethernetLayer := packet.Layer(layers.LayerTypeEthernet)
 	if ethernetLayer != nil{
 		ethernetPacket, _ := ethernetLayer.(*layers.Ethernet)
 		return ethernetPacket.SrcMAC.String(), ethernetPacket.DstMAC.String(), ethernetPacket.EthernetType.String()
@@ -119,14 +117,14 @@ func getTcpLayer(packet gopacket.Packet) (string, string){
 	return "", ""
 }
 
-func getApplicationLayer(packet gopacket.Packet) (string) {
+func getApplicationLayer(packet gopacket.Packet, stringArg string) (string) {
 	applicationLayer := packet.ApplicationLayer()
 	if applicationLayer != nil {
-		return hex.Dump(applicationLayer.Payload())
 		// Search for a string inside the payload
-		/*if strings.Contains(string(applicationLayer.Payload()), "HTTP") {
-			fmt.Println("HTTP found!")
-		}*/
+		if (stringArg != "" && strings.Contains(string(applicationLayer.Payload()), stringArg)) {
+			return hex.Dump(applicationLayer.Payload())	
+		}
+		return hex.Dump(applicationLayer.Payload())
 	}
 	return ""
 }
@@ -178,7 +176,7 @@ func getPacketLength(packet string) (string){
 }
 
 
-func handlePacket(packet gopacket.Packet){
+func handlePacket(packet gopacket.Packet, stringArg string){
 	packetLength := getPacketLength(packet.Dump())
   	timestamp := getTimeStamp(packet.String())
   	generelInfoObj := generelInfo{
@@ -206,7 +204,7 @@ func handlePacket(packet gopacket.Packet){
   		dstPort: dstPort,
   	}
 
-  	payload := getApplicationLayer(packet)
+  	payload := getApplicationLayer(packet, stringArg)
   	appInfoObj := appInfo{
   		payload: payload,
   	}
@@ -214,26 +212,32 @@ func handlePacket(packet gopacket.Packet){
   	printPcapLogs(generelInfoObj, etherInfoObj, ipInfoObj, tcpInfoObj, appInfoObj)
 }
 
-func readPcap(pcapFileName string, stringArg string){
+func readPcap(pcapFileName string, stringArg string, bpfFilter string){
 	if handle, err := pcap.OpenOffline(pcapFileName); err != nil{
 		panic(err)
 	} else {
+		// handle.SetBPFFilter("tcp and port 80")
+		handle.SetBPFFilter(bpfFilter)
 		packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
 		for packet := range packetSource.Packets() {
-			// fmt.Println(getIPv4Layer(packet))
-			handlePacket(packet)			
+			handlePacket(packet, stringArg)			
   		}
 	}
 }
 
 
-func captureLiveTraffic(interfaceName string, stringArg string){
+func captureLiveTraffic(interfaceName string, stringArg string, bpfFilter string){
 	if handle, err := pcap.OpenLive(interfaceName, 1600, true, pcap.BlockForever); err != nil {
-  		panic(err)
+  		//panic(err)
+  		fmt.Println("Invalid usage")
+  		fmt.Println("Usage:\n\n./mydump [-i interface] [-r pcap] [-s string] [arguments]")
+		fmt.Println("-r flag expects .pcap file")
+		os.Exit(1)
 	} else {
+		handle.SetBPFFilter(bpfFilter)
   		packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
   		for packet := range packetSource.Packets() {
-    		handlePacket(packet)
+    		handlePacket(packet, stringArg)
   		}
 	}
 }
@@ -250,48 +254,86 @@ func printAllAvailableInterfaces(){
 	}
 }
 
+func stringInSlice(a string, list []string) bool {
+    for _, b := range list {
+        if b == a {
+            return true
+        }
+    }
+    return false
+}
+
 func main() {
 	commandLineArgs := os.Args
 	if len(commandLineArgs) < 2 {
-		fmt.Println("Usage:\n\n./mydump -<flag> [arguments]")
+		fmt.Println("Usage:\n\n./mydump [-i interface] [-r pcap] [-s string] [arguments]")
 		fmt.Println("-r flag expects .pcap file")
 		fmt.Println("-i flag expects interface name")
 		fmt.Println("You can pick any interface from the following:")
 		printAllAvailableInterfaces()
 	} else {
-		flag := commandLineArgs[1]
+		filterMode := "default"
+		stringArg := ""
+		bpfFilter := ""
+		pcapFile := ""
+		interfaceName := ""
 		
-		if(flag == "-r") {
-			// command will have pcap file
-			// fmt.Println("-r: This flag will read the input pcap file provided as input.")
-			if(len(commandLineArgs) < 3){
-				fmt.Println("Error: -r flag expects *.pcap file as input")
+		/*
+		if((commandLineArgs[1] == "-i" && commandLineArgs[3] == "-r") || (commandLineArgs[1] == "-r" && commandLineArgs[3] == "-i")){
+			fmt.Println("hello");
+			if(commandLineArgs[2] == "" || commandLineArgs[4] == ""){
+				fmt.Println("Error: -i flag expects interface name and -r expects .pcap file")
 				os.Exit(1)
 			}
-			pcapFile := commandLineArgs[2]
-			readPcap(pcapFile, "")
-		} else if(flag == "-i") {
-			// command will have available interface name
-			// fmt.Println("-i: This flag will capture live packets from selected interface.")
-			if(len(commandLineArgs) < 3){
-				fmt.Println("Error: -i flag expects interface name as input")
+			if(strings.Contains(commandLineArgs[2], ".pcap")){
+				pcapFile = commandLineArgs[2]
+			} else if(strings.Contains(commandLineArgs[4], ".pcap")){
+				pcapFile = commandLineArgs[4]
+			} else {
+				fmt.Println("Error: -r flag expects .pcap file")
 				os.Exit(1)
 			}
-			interfaceName := commandLineArgs[2]
-			if(interfaceName == ""){
-				interfaceName = "eth0"
-			}
-			captureLiveTraffic(interfaceName, "")
-		}
+			filterMode = "offline"
+		} else {
 
+			flag := commandLineArgs[1]
+			if(flag == "-i") {
+				if(len(commandLineArgs) < 3){
+					fmt.Println("Error: -i flag expects interface name as input")
+					os.Exit(1)		
+				}
+				interfaceName = commandLineArgs[2]
+				filterMode = "online"
+			} else if(flag == "-r") {
+				if(len(commandLineArgs) < 3){
+					fmt.Println("Error: -r flag expects *.pcap file as input")
+					os.Exit(1)
+				}
+				pcapFile = commandLineArgs[2]
+				filterMode = "offline"
+			}
+		}
+		// ./mydump "tcp and port 80"
 		if(len(commandLineArgs) > 4){
-			// filter string
-			optionalParamFlag := commandLineArgs[3]
-			if(optionalParamFlag == "-s" && len(commandLineArgs) < 5){
+			stringArgFlag := commandLineArgs[3]
+			if(stringArgFlag == "-s" && len(commandLineArgs) < 5){
 				fmt.Println("Error: -s flag expects string argument")
 				os.Exit(1)
 			}
-			//stringArg := commandLineArgs[4]
+			stringArg = commandLineArgs[4]
 		}
-	}
+
+		if(len(commandLineArgs) == 2){
+			bpfFilter = commandLineArgs[2]
+		}
+
+		fmt.Println("Running mode: " + filterMode)
+		if(filterMode == "default"){
+			captureLiveTraffic("wlp6s0", stringArg, bpfFilter)
+		} else if(filterMode == "offline"){
+			readPcap(pcapFile, stringArg, bpfFilter)
+		} else if(filterMode == "online"){
+			captureLiveTraffic(interfaceName, stringArg, bpfFilter)
+		}
+	}*/
 }
