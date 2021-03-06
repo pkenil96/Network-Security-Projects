@@ -42,11 +42,11 @@ package main
 
 import (
     "fmt"
-	"os"
-	"strings"
-	"encoding/hex"
-	"regexp"
-	"github.com/google/gopacket"
+    "os"
+    "strings"
+    "encoding/hex"
+    "regexp"
+    "github.com/google/gopacket"
     "github.com/google/gopacket/pcap"
     "github.com/google/gopacket/layers"
 )
@@ -254,6 +254,12 @@ func printAllAvailableInterfaces(){
 	}
 }
 
+func removeItemAtIndexI(index int, array [] string){
+	array[index] = array[len(array)-1] // Copy last element to index i.
+	array[len(array)-1] = ""   // Erase last element (write zero value).
+	array = array[:len(array)-1]  
+}
+
 func stringInSlice(a string, list []string) bool {
     for _, b := range list {
         if b == a {
@@ -266,7 +272,7 @@ func stringInSlice(a string, list []string) bool {
 func main() {
 	commandLineArgs := os.Args
 	if len(commandLineArgs) < 2 {
-		fmt.Println("Usage:\n\n./mydump [-i interface] [-r pcap] [-s string] [arguments]")
+		fmt.Println("Usage:\n./mydump [-i interface] [-r pcap] [-s string] [arguments]")
 		fmt.Println("-r flag expects .pcap file")
 		fmt.Println("-i flag expects interface name")
 		fmt.Println("You can pick any interface from the following:")
@@ -278,56 +284,32 @@ func main() {
 		pcapFile := ""
 		interfaceName := ""
 		
-		/*
-		if((commandLineArgs[1] == "-i" && commandLineArgs[3] == "-r") || (commandLineArgs[1] == "-r" && commandLineArgs[3] == "-i")){
-			fmt.Println("hello");
-			if(commandLineArgs[2] == "" || commandLineArgs[4] == ""){
-				fmt.Println("Error: -i flag expects interface name and -r expects .pcap file")
-				os.Exit(1)
-			}
-			if(strings.Contains(commandLineArgs[2], ".pcap")){
-				pcapFile = commandLineArgs[2]
-			} else if(strings.Contains(commandLineArgs[4], ".pcap")){
-				pcapFile = commandLineArgs[4]
-			} else {
-				fmt.Println("Error: -r flag expects .pcap file")
-				os.Exit(1)
-			}
+		commandLineArgsCopy := commandLineArgs
+		removeItemAtIndexI(0, commandLineArgsCopy)
+		if(stringInSlice("-i", commandLineArgs)){
+			filterMode = "online"
+		} 
+		if(stringInSlice("-r", commandLineArgs)){
 			filterMode = "offline"
-		} else {
-
-			flag := commandLineArgs[1]
-			if(flag == "-i") {
-				if(len(commandLineArgs) < 3){
-					fmt.Println("Error: -i flag expects interface name as input")
-					os.Exit(1)		
-				}
-				interfaceName = commandLineArgs[2]
-				filterMode = "online"
-			} else if(flag == "-r") {
-				if(len(commandLineArgs) < 3){
-					fmt.Println("Error: -r flag expects *.pcap file as input")
-					os.Exit(1)
-				}
-				pcapFile = commandLineArgs[2]
-				filterMode = "offline"
+		}
+		for i, arg := range commandLineArgs{
+			if(commandLineArgs[i] == "-r"){
+				pcapFile = commandLineArgs[i+1]
+				removeItemAtIndexI(i, commandLineArgsCopy)
+			}
+			if(commandLineArgs[i] == "-i"){
+				interfaceName = commandLineArgs[i+1]
+				removeItemAtIndexI(i, commandLineArgsCopy)
+			}
+			if(commandLineArgs[i] == "-s"){
+				stringArg = commandLineArgs[i+1]
+				removeItemAtIndexI(i, commandLineArgsCopy)
+			}
+			if(len(commandLineArgsCopy) != 0){
+				bpfFilter = commandLineArgsCopy[0]
 			}
 		}
-		// ./mydump "tcp and port 80"
-		if(len(commandLineArgs) > 4){
-			stringArgFlag := commandLineArgs[3]
-			if(stringArgFlag == "-s" && len(commandLineArgs) < 5){
-				fmt.Println("Error: -s flag expects string argument")
-				os.Exit(1)
-			}
-			stringArg = commandLineArgs[4]
-		}
 
-		if(len(commandLineArgs) == 2){
-			bpfFilter = commandLineArgs[2]
-		}
-
-		fmt.Println("Running mode: " + filterMode)
 		if(filterMode == "default"){
 			captureLiveTraffic("wlp6s0", stringArg, bpfFilter)
 		} else if(filterMode == "offline"){
@@ -335,5 +317,4 @@ func main() {
 		} else if(filterMode == "online"){
 			captureLiveTraffic(interfaceName, stringArg, bpfFilter)
 		}
-	}*/
 }
