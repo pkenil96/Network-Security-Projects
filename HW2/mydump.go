@@ -99,7 +99,7 @@ func getIPv4Layer(packet gopacket.Packet) (string, string, string){
 	if ipLayer != nil{
 		ip, _ := ipLayer.(*layers.IPv4)
 		protocolType := ip.Protocol.String()
-		// if(protocolType != "UDP" || protocolType != "TCP" || protocolType != "ICMP"){
+		//if(protocolType != "UDP" || protocolType != "TCP" || protocolType != "ICMP"){
 		// 	fmt.Println(protocolType)
 		//	protocolType = "OTHER"
 		//}
@@ -284,37 +284,52 @@ func main() {
 		pcapFile := ""
 		interfaceName := ""
 		
-		commandLineArgsCopy := commandLineArgs
-		removeItemAtIndexI(0, commandLineArgsCopy)
 		if(stringInSlice("-i", commandLineArgs)){
 			filterMode = "online"
 		} 
 		if(stringInSlice("-r", commandLineArgs)){
 			filterMode = "offline"
 		}
+		var indices []int
 		for i, arg := range commandLineArgs{
+			_ = arg
+			if(i == 0){
+				continue
+			}
 			if(commandLineArgs[i] == "-r"){
 				pcapFile = commandLineArgs[i+1]
-				removeItemAtIndexI(i, commandLineArgsCopy)
+				indices = append(indices, i)
+				indices = append(indices, i + 1)
 			}
 			if(commandLineArgs[i] == "-i"){
 				interfaceName = commandLineArgs[i+1]
-				removeItemAtIndexI(i, commandLineArgsCopy)
+				indices = append(indices, i)
+				indices = append(indices, i + 1)
 			}
 			if(commandLineArgs[i] == "-s"){
 				stringArg = commandLineArgs[i+1]
-				removeItemAtIndexI(i, commandLineArgsCopy)
+				indices = append(indices, i)
+				indices = append(indices, i + 1)
 			}
-			if(len(commandLineArgsCopy) != 0){
-				bpfFilter = commandLineArgsCopy[0]
-			}
+		}
+		for i, val := range indices {
+			_ = i
+			removeItemAtIndexI(val, commandLineArgs)
+		}
+
+		if(len(commandLineArgs) > 1){
+			bpfFilter = commandLineArgs[1]
 		}
 
 		if(filterMode == "default"){
+			fmt.Println("Reading from default interface: ")
 			captureLiveTraffic("wlp6s0", stringArg, bpfFilter)
 		} else if(filterMode == "offline"){
+			fmt.Println("Reading from pcap: ", pcapFile)
 			readPcap(pcapFile, stringArg, bpfFilter)
 		} else if(filterMode == "online"){
+			fmt.Println("Reading from interface: ", interfaceName)
 			captureLiveTraffic(interfaceName, stringArg, bpfFilter)
 		}
+	}
 }
