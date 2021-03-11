@@ -51,7 +51,6 @@ import (
     "github.com/google/gopacket/layers"
 )
 
-
 type generelInfo struct{
 	packetLength string
 	timestamp string
@@ -72,18 +71,20 @@ type ipInfo struct{
 type tcpInfo struct{
 	srcPort string
 	dstPort string
-	// tcpFlags string
+	flags []string
 }
 
 type appInfo struct{
 	payload string
 }
 
+
 func getAllLayers(packet gopacket.Packet){
 	for _, layer := range packet.Layers(){
 		fmt.Println("-", layer.LayerType())
 	}
 }
+
 
 func getEthernetLayer(packet gopacket.Packet) (string, string, string){
  	ethernetLayer := packet.Layer(layers.LayerTypeEthernet)
@@ -94,28 +95,53 @@ func getEthernetLayer(packet gopacket.Packet) (string, string, string){
 	return "", "", ""
 }
 
+
 func getIPv4Layer(packet gopacket.Packet) (string, string, string){
 	ipLayer := packet.Layer(layers.LayerTypeIPv4)
 	if ipLayer != nil{
 		ip, _ := ipLayer.(*layers.IPv4)
 		protocolType := ip.Protocol.String()
-		//if(protocolType != "UDP" || protocolType != "TCP" || protocolType != "ICMP"){
-		// 	fmt.Println(protocolType)
-		//	protocolType = "OTHER"
-		//}
-		return ip.SrcIP.String(), ip.DstIP.String(), protocolType  
+		if(protocolType == "UDP" || protocolType == "TCP" || protocolType == "ICMP"){
+		 	return ip.SrcIP.String(), ip.DstIP.String(), protocolType
+		} else {
+			protocolType = "OTHER"
+			return ip.SrcIP.String(), ip.DstIP.String(), protocolType
+		}	  
 	} 
 	return "", "", ""
 }
 
-func getTcpLayer(packet gopacket.Packet) (string, string){
+
+func getTcpLayer(packet gopacket.Packet) (string, string, []string){
 	tcpLayer := packet.Layer(layers.LayerTypeTCP)
 	if tcpLayer != nil{
 		tcp, _ := tcpLayer.(*layers.TCP)
-		return tcp.SrcPort.String(), tcp.DstPort.String()
+		flags := make([]string, 1)
+		
+		if (tcp.FIN) {
+			flags = append(flags, "FIN");
+		} 
+		if (tcp.SYN) {
+			flags = append(flags, "SYN");
+		}
+		if (tcp.RST) {
+			flags = append(flags, "RST");
+		}
+		if (tcp.PSH) {
+			flags = append(flags, "PSH");
+		}
+		if (tcp.ACK) {
+			flags = append(flags, "ACK");
+		}
+		if (tcp.URG) {
+			flags = append(flags, "URG");
+		}
+		return tcp.SrcPort.String(), tcp.DstPort.String(), flags
 	}
-	return "", ""
+	var eflags []string
+	return "", "", eflags
 }
+
 
 func getApplicationLayer(packet gopacket.Packet, stringArg string) (string) {
 	applicationLayer := packet.ApplicationLayer()
@@ -129,7 +155,7 @@ func getApplicationLayer(packet gopacket.Packet, stringArg string) (string) {
 	return ""
 }
 
-// null value check needs to be done in the print function
+
 func printPcapLogs(generelInfoObj generelInfo, etherInfoObj etherInfo, ipInfoObj ipInfo, tcpInfoObj tcpInfo, appInfoObj appInfo){
 	/*
 		timestamp src_mac -> dst_mac type ether_type len packet_length
@@ -144,11 +170,17 @@ func printPcapLogs(generelInfoObj generelInfo, etherInfoObj etherInfo, ipInfoObj
 	 	generelInfoObj.packetLength)
 
 	if(ipInfoObj.srcIp != "" && ipInfoObj.dstIp != "" && tcpInfoObj.srcPort != "" && tcpInfoObj.dstPort != ""){
-		output += fmt.Sprintf("%s:%s -> %s:%s %s\n", ipInfoObj.srcIp, tcpInfoObj.srcPort, ipInfoObj.dstIp, tcpInfoObj.dstPort, ipInfoObj.protocolType)
+		output += fmt.Sprintf("%s:%s -> %s:%s %s", ipInfoObj.srcIp, tcpInfoObj.srcPort, ipInfoObj.dstIp, tcpInfoObj.dstPort, ipInfoObj.protocolType)
 	} else if(ipInfoObj.srcIp != "" && ipInfoObj.dstIp != ""){
-		output += fmt.Sprintf("%s -> %s %s\n", ipInfoObj.srcIp, ipInfoObj.dstIp, ipInfoObj.protocolType)
-	}
+		output += fmt.Sprintf("%s -> %s %s", ipInfoObj.srcIp, ipInfoObj.dstIp, ipInfoObj.protocolType)
+	} 
 
+	for i, val := range tcpInfoObj.flags{
+		_ = i
+		output += val + " " 
+	}
+	
+	output += "\n"
 	if(appInfoObj.payload != ""){
 		output += fmt.Sprintf("%s\n", appInfoObj.payload)
 	}
@@ -156,7 +188,6 @@ func printPcapLogs(generelInfoObj generelInfo, etherInfoObj etherInfo, ipInfoObj
 	fmt.Println(output)
 }
 
-//func handlePackets(packet gopacket.Packet)
 
 func getTimeStamp(packet string) (string){
 	re := regexp.MustCompile("\\s@\\s.*?EST")
@@ -169,6 +200,7 @@ func getTimeStamp(packet string) (string){
 	return timestamp
 }
 
+
 func getPacketLength(packet string) (string){
 	re := regexp.MustCompile("[0-9]+")
 	match := re.FindStringSubmatch(packet)
@@ -177,6 +209,14 @@ func getPacketLength(packet string) (string){
 
 
 func handlePacket(packet gopacket.Packet, stringArg string){
+	etherTypeHexMap := map[string]string{
+    	"IPv4": "0x0800",
+    	"ARP":  "0x0806",
+    	"RARP": "0x8035",
+    	"IPv6": "0x86DD",
+	}
+
+
 	packetLength := getPacketLength(packet.Dump())
   	timestamp := getTimeStamp(packet.String())
   	generelInfoObj := generelInfo{
@@ -188,7 +228,7 @@ func handlePacket(packet gopacket.Packet, stringArg string){
   	etherInfoObj := etherInfo{
   		srcMac: srcMac,
   		dstMac: dstMac,
-  		etherType: etherType,
+  		etherType: etherTypeHexMap[etherType],
   	}
   			
   	srcIp, dstIp, protocol := getIPv4Layer(packet)
@@ -198,10 +238,11 @@ func handlePacket(packet gopacket.Packet, stringArg string){
   		protocolType: protocol,
   	}
   			
-  	srcPort, dstPort := getTcpLayer(packet)
+  	srcPort, dstPort, flags := getTcpLayer(packet)
   	tcpInfoObj := tcpInfo{
   		srcPort: srcPort,
   		dstPort: dstPort,
+  		flags: flags,
   	}
 
   	payload := getApplicationLayer(packet, stringArg)
@@ -212,11 +253,11 @@ func handlePacket(packet gopacket.Packet, stringArg string){
   	printPcapLogs(generelInfoObj, etherInfoObj, ipInfoObj, tcpInfoObj, appInfoObj)
 }
 
+
 func readPcap(pcapFileName string, stringArg string, bpfFilter string){
 	if handle, err := pcap.OpenOffline(pcapFileName); err != nil{
 		panic(err)
 	} else {
-		// handle.SetBPFFilter("tcp and port 80")
 		handle.SetBPFFilter(bpfFilter)
 		packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
 		for packet := range packetSource.Packets() {
@@ -228,7 +269,6 @@ func readPcap(pcapFileName string, stringArg string, bpfFilter string){
 
 func captureLiveTraffic(interfaceName string, stringArg string, bpfFilter string){
 	if handle, err := pcap.OpenLive(interfaceName, 1600, true, pcap.BlockForever); err != nil {
-  		//panic(err)
   		fmt.Println("Invalid usage")
   		fmt.Println("Usage:\n\n./mydump [-i interface] [-r pcap] [-s string] [arguments]")
 		fmt.Println("-r flag expects .pcap file")
@@ -254,11 +294,13 @@ func printAllAvailableInterfaces(){
 	}
 }
 
+
 func removeItemAtIndexI(index int, array [] string){
 	array[index] = array[len(array)-1] // Copy last element to index i.
 	array[len(array)-1] = ""   // Erase last element (write zero value).
 	array = array[:len(array)-1]  
 }
+
 
 func stringInSlice(a string, list []string) bool {
     for _, b := range list {
@@ -271,8 +313,8 @@ func stringInSlice(a string, list []string) bool {
 
 func main() {
 	commandLineArgs := os.Args
-	if len(commandLineArgs) < 2 {
-		fmt.Println("Usage:\n./mydump [-i interface] [-r pcap] [-s string] [arguments]")
+	if len(commandLineArgs) < 1 {
+		fmt.Println("Usage:\nsudo go run [-i interface] [-r pcap] [-s string] [arguments]")
 		fmt.Println("-r flag expects .pcap file")
 		fmt.Println("-i flag expects interface name")
 		fmt.Println("You can pick any interface from the following:")
@@ -320,7 +362,7 @@ func main() {
 		if(len(commandLineArgs) > 1){
 			bpfFilter = commandLineArgs[1]
 		}
-
+		fmt.Println("Using bpf filter = ", bpfFilter)
 		if(filterMode == "default"){
 			fmt.Println("Reading from default interface: ")
 			captureLiveTraffic("wlp6s0", stringArg, bpfFilter)

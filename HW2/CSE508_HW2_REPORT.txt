@@ -1,0 +1,140 @@
+CSE508: Network Security, Spring 2021
+
+Homework 2: Network Traffic Sniffing
+
+***********************************
+Name - Kenil Patel
+SBUid - 113262209
+***********************************
+
+Usage:
+sudo go run mydump.go [-r pcap] [-i interface] [-s string] [bpf filter]
+
+mydump.go takes in 4 parameters described as below:
+
+-r <pcap file> - Whenever this flag is used, the program expects a valid pcap file. Failure to provide a pcap file or a corrupted pcap can result in error(s).
+
+-i <interface name> - Usage of this flag expects an interface name followed by the -i flag. In case a valid interface name is not specified, the program results in error(s).
+
+-s <filter string> - This flag is used to filter the tcp payload using some string that is followed by the -s flag. 
+
+[bpf filter] - This parameter is passed without any flags in the form of string. A valid bpf filter will filter the network traffic based on the expression; invalid expression will throw an error.
+
+
+Note:
+1) The program need to run with sudo to avoid permission related errors.
+2) The flags can be given in any order, the program will handle it.
+
+Implementation Details: 
+The mydump.go program is divided into following major functions:
+1) captureLiveTraffic (online mode) - reads network traffic from the interface provided. In case an interface name is not provided, it reads packets from the default interface (wlp6s0).
+2) readPcap (offline mode) - reads network traffic from the pcap file which is passed to it as argument. In case both interface and pcap are provided, the program gives priority to the offline mode.
+3) handlePcap - extracts information like source max, destination mac, source port, destination port, protocol type, packet length etc layer wise from the packet passed to it.
+4) printPcapLogs - this function takes in input layer wise structures and outputs the information in the desired format.
+5) other utility functions which serves as helper functions
+
+
+Output:
+
+1) When no arguments are passed, the program captures packets from default interface
+
+Command: sudo go run mydump.go
+
+2021-03-10 19:18:29.172945 64:5a:04:44:76:13 -> aa:bb:cc:dd:ee:ff type 0x0800 len 1385
+172.24.18.23 -> 142.250.73.206 UDP
+00000000  5b 28 21 8b 5e 40 d0 33  ad 24 59 2a 28 27 0a b1  |[(!.^@.3.$Y*('..|
+00000010  04 7a bc 26 1f a1 eb fe  c1 24 b3 72 30 27 3e 4f  |.z.&.....$.r0'>O|
+00000020  91 5e 78 0a cc e2 c5 2b  31 ec b1 b9 f8 e5 b6 f8  |.^x....+1.......|
+00000030  13 56 58 bd e5 28 71 db  ae dd bf b2 48 f5 4e f0  |.VX..(q.....H.N.|
+00000040  e1 85 e9 5f eb bd a2 7f  e5 aa 47 35 b1 00 35 55  |..._......G5..5U|
+00000050  25 49 cf 3f de 4d 48 de  21 5b f8 c8 31 fb 91 23  |%I.?.MH.![..1..#|
+00000060  bd 13 99 41 78 79 39 0e  83 d1 81 57 94 0f 93 cf  |...Axy9....W....|
+00000070  68 1e ec ac 82 64 ef d7  79 36 25 49 a2 83 7b 7d  |h....d..y6%I..{}|
+00000080  5b 71 f8 db 61 2f c8 a3  fc 91 98 3c df 78 7d a5  |[q..a/.....<.x}.|
+00000090  94 e4 cb 02 81 51 08 e1  ff 52 c1 43 95 6d 9f 8b  |.....Q...R.C.m..|
+000000a0  30 2c 11 8a 92 fa 83 0c  b2 85 50 2a 13 35 7f 3f  |0,........P*.5.?|
+
+2021-03-10 19:18:29.172986 64:5a:04:44:76:13 -> aa:bb:cc:dd:ee:ff type 0x0800 len 1392
+172.24.18.23 -> 142.250.73.206 UDP
+00000000  5d 28 21 8b 5e 40 d0 33  ad 6c 76 d8 31 f7 60 67  |](!.^@.3.lv.1.`g|
+00000010  f9 7d 0f e7 26 cd 58 e8  47 72 04 4a 1b 3d e2 b5  |.}..&.X.Gr.J.=..|
+00000020  aa 5f 3c 88 4d 55 94 2a  4a db 26 c2 b1 27 9f 6c  |._<.MU.*J.&..'.l|
+00000030  7b b8 0d a0 b9 6f a1 78  40 3c e8 1c 48 44 43 9e  |{....o.x@<..HDC.|
+
+2) When both -r and -i flags are passed alongwith arguments, the program reads from pcap file
+
+Command: sudo go run mydump.go -i wlp6s0 -r hw1.pcap
+
+2013-01-12 11:37:42.871346 c4:3d:c7:17:6f:9b -> ff:ff:ff:ff:ff:ff type 0x0806 len 60
+00000000  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+00000010  00 00                                             |..|
+
+2013-01-12 11:38:02.227995 c4:3d:c7:17:6f:9b -> 01:00:5e:7f:ff:fa type 0x0800 len 342
+192.168.0.1 -> 239.255.255.250 UDP
+00000000  4e 4f 54 49 46 59 20 2a  20 48 54 54 50 2f 31 2e  |NOTIFY * HTTP/1.|
+00000010  31 0d 0a 48 4f 53 54 3a  20 32 33 39 2e 32 35 35  |1..HOST: 239.255|
+00000020  2e 32 35 35 2e 32 35 30  3a 31 39 30 30 0d 0a 43  |.255.250:1900..C|
+00000030  61 63 68 65 2d 43 6f 6e  74 72 6f 6c 3a 20 6d 61  |ache-Control: ma|
+00000040  78 2d 61 67 65 3d 33 36  30 30 0d 0a 4c 6f 63 61  |x-age=3600..Loca|
+00000050  74 69 6f 6e 3a 20 68 74  74 70 3a 2f 2f 31 39 32  |tion: http://192|
+00000060  2e 31 36 38 2e 30 2e 31  3a 38 30 2f 52 6f 6f 74  |.168.0.1:80/Root|
+00000070  44 65 76 69 63 65 2e 78  6d 6c 0d 0a 4e 54 3a 20  |Device.xml..NT: |
+00000080  75 75 69 64 3a 75 70 6e  70 2d 49 6e 74 65 72 6e  |uuid:upnp-Intern|
+00000090  65 74 47 61 74 65 77 61  79 44 65 76 69 63 65 2d  |etGatewayDevice-|
+000000a0  31 5f 30 2d 63 34 33 64  63 37 31 37 36 66 39 62  |1_0-c43dc7176f9b|
+000000b0  0d 0a 55 53 4e 3a 20 75  75 69 64 3a 75 70 6e 70  |..USN: uuid:upnp|
+000000c0  2d 49 6e 74 65 72 6e 65  74 47 61 74 65 77 61 79  |-InternetGateway|
+000000d0  44 65 76 69 63 65 2d 31  5f 30 2d 63 34 33 64 63  |Device-1_0-c43dc|
+000000e0  37 31 37 36 66 39 62 0d  0a 4e 54 53 3a 20 73 73  |7176f9b..NTS: ss|
+000000f0  64 70 3a 61 6c 69 76 65  0d 0a 53 65 72 76 65 72  |dp:alive..Server|
+00000100  3a 20 55 50 6e 50 2f 31  2e 30 20 55 50 6e 50 2f  |: UPnP/1.0 UPnP/|
+00000110  31 2e 30 20 55 50 6e 50  2d 44 65 76 69 63 65 2d  |1.0 UPnP-Device-|
+00000120  48 6f 73 74 2f 31 2e 30  0d 0a 0d 0a              |Host/1.0....|
+
+
+3) When bpf filter string is passed, the program filters out output based on the expression
+
+Command: sudo go run mydump.go "tcp and port 443"
+
+Using bpf filter =  tcp and port 443
+Reading from default interface: 
+2021-03-10 19:26:15.935882 64:5a:04:44:76:13 -> aa:bb:cc:dd:ee:ff type 0x0800 len 66
+172.24.18.23:38884 -> 100.25.101.142:443(https) TCP ACK 
+
+2021-03-10 19:26:15.935934 64:5a:04:44:76:13 -> aa:bb:cc:dd:ee:ff type 0x0800 len 66
+172.24.18.23:50468 -> 34.199.193.227:443(https) TCP ACK 
+
+2021-03-10 19:26:15.935961 64:5a:04:44:76:13 -> aa:bb:cc:dd:ee:ff type 0x0800 len 66
+172.24.18.23:39270 -> 54.152.12.241:443(https) TCP ACK 
+
+2021-03-10 19:26:15.935981 64:5a:04:44:76:13 -> aa:bb:cc:dd:ee:ff type 0x0800 len 66
+172.24.18.23:34046 -> 54.77.170.127:443(https) TCP ACK
+
+4) When both interface and pcap are provided and bpf filter is applied
+
+Command: sudo go run mydump.go -i wlp6s0 -r hw1.pcap "tcp and port 80"
+
+Using bpf filter =  tcp and port 80
+Reading from pcap:  hw1.pcap
+2013-01-12 22:30:48.832497 c4:3d:c7:17:6f:9b -> 00:0c:29:e9:94:8e type 0x0800 len 74
+92.240.68.152:9485 -> 192.168.0.200:80(http) TCP SYN 
+
+2013-01-12 22:30:48.846741 00:0c:29:e9:94:8e -> c4:3d:c7:17:6f:9b type 0x0800 len 74
+192.168.0.200:80(http) -> 92.240.68.152:9485 TCP SYN ACK 
+
+2013-01-12 22:30:48.908396 c4:3d:c7:17:6f:9b -> 00:0c:29:e9:94:8e type 0x0800 len 66
+92.240.68.152:9485 -> 192.168.0.200:80(http) TCP ACK 
+
+2013-01-12 22:30:48.908526 c4:3d:c7:17:6f:9b -> 00:0c:29:e9:94:8e type 0x0800 len 177
+92.240.68.152:9485 -> 192.168.0.200:80(http) TCP PSH ACK 
+00000000  47 45 54 20 68 74 74 70  3a 2f 2f 70 69 63 2e 6c  |GET http://pic.l|
+00000010  65 65 63 68 2e 69 74 2f  69 2f 66 31 36 36 63 2f  |eech.it/i/f166c/|
+00000020  34 37 39 32 34 36 62 30  61 73 74 74 61 73 2e 6a  |479246b0asttas.j|
+00000030  70 67 20 48 54 54 50 2f  31 2e 31 0a 55 73 65 72  |pg HTTP/1.1.User|
+00000040  2d 41 67 65 6e 74 3a 20  77 65 62 63 6f 6c 6c 61  |-Agent: webcolla|
+00000050  67 65 2f 31 2e 31 33 35  61 0a 48 6f 73 74 3a 20  |ge/1.135a.Host: |
+00000060  70 69 63 2e 6c 65 65 63  68 2e 69 74 0a 0a 00     |pic.leech.it...|
+
+2013-01-12 22:30:48.908554 00:0c:29:e9:94:8e -> c4:3d:c7:17:6f:9b type 0x0800 len 66
+192.168.0.200:80(http) -> 92.240.68.152:9485 TCP ACK
+
