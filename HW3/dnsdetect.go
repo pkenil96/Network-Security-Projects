@@ -42,8 +42,8 @@ var (
 	DstPort    string
 	DnsServerPort string
 	VicPort string
-	DnsServerIP string
-	VicIP string
+	srcIp string
+	dstIp string
 )
 
 func stringInSlice(a string, list []string) bool {
@@ -55,7 +55,7 @@ func stringInSlice(a string, list []string) bool {
     return false
 }
 
-func captureLiveTraffic(interfaceName string, bpfFilter string, hostnames []string, targetips []string){
+func captureLiveTraffic(interfaceName string, bpfFilter string, attacker map[string]string){
 	var (
 		device       string = ""
 		snapshot_len int32  = 1024
@@ -104,6 +104,11 @@ func captureLiveTraffic(interfaceName string, bpfFilter string, hostnames []stri
 	query_map := make(map[int]int)
 	response_map := make(map[int]int)
 
+	hostnames := make([]string, 0, len(attacker))
+	for key, _ := range attacker {
+	    hostnames = append(hostnames, key)
+	}
+	
 	for {
 		data, _, err := handle.ReadPacketData()
 		if err != nil {
@@ -117,8 +122,8 @@ func captureLiveTraffic(interfaceName string, bpfFilter string, hostnames []stri
 					VicPort = udp.SrcPort.String()
 					DnsServerPort = udp.DstPort.String()
 				case layers.LayerTypeIPv4:
-					VicIP = ip4.SrcIP.String()
-					DnsServerIP = ip4.DstIP.String()
+					srcIp = ip4.SrcIP.String()
+					dstIp = ip4.DstIP.String()
 				case layers.LayerTypeDNS:
 					dnsId := int(dns.ID)
 				
@@ -151,9 +156,14 @@ func captureLiveTraffic(interfaceName string, bpfFilter string, hostnames []stri
 							 	dnsId, response_map[dnsId]))
 
 						if(response_map[dnsId] > query_map[dnsId]){
-							fmt.Println("****Attack Detected****")
-							fmt.Sprintf("%d responses found against %d queries for the Transaction ID = %d",
-								response_map[dnsId], query_map[dnsId], dnsId )
+							fmt.Println("**********Attack Detected**********")
+							fmt.Println(fmt.Sprintf("%d responses found against %d queries for the Transaction ID = %d",
+								response_map[dnsId], query_map[dnsId], dnsId ))
+							fmt.Println("-----Attack Summary-----")
+							fmt.Println(fmt.Sprintf("TRANSACTION ID: %d", dnsId))
+							fmt.Println(fmt.Sprintf("DOMAIN: %s", domain))
+							fmt.Println(fmt.Sprintf("VICTIM IP: %s", dstIp))
+							fmt.Println(fmt.Sprintf("DNS SERVER IP: %s", srcIp))
 							os.Exit(1)
 						}
 					}
@@ -171,19 +181,17 @@ func main() {
     		fmt.Println("File reading error", err)
     		return
   		}
-  		content := string(data)
-  		lines := strings.Split(content, "\n")
-  		var hostnames []string
-  		var targetips []string
-
+  		lines := strings.Split(string(data), "\n")
+  		attacker := make(map[string]string)
   		for index, element := range lines {
     		_ = index
-    		hostname_and_targetip := strings.Fields(element)
-    		if len(hostname_and_targetip) == 0{
+    		hostname_and_attackerip := strings.Fields(element)
+    		if len(hostname_and_attackerip) == 0{
     			break
     		}
-    		targetips = append(hostnames, hostname_and_targetip[0])
-    		hostnames = append(targetips, hostname_and_targetip[1])
-		}
-		captureLiveTraffic(interfaceName, bpfFilter, hostnames, targetips)
+    		attacker_ip := hostname_and_attackerip[0]
+    		hostname := hostname_and_attackerip[1]
+    		attacker[hostname] = attacker_ip
+    	}
+		captureLiveTraffic(interfaceName, bpfFilter, attacker)
 }
