@@ -3,47 +3,22 @@ package main
 import (
     "fmt"
     "time"
-    "log"
-    "io/ioutil"
-    "strings"
+    "strconv"
     "os"
-    //"strconv"
     "github.com/google/gopacket"
     "github.com/google/gopacket/pcap"
     "github.com/google/gopacket/layers"
 )
 
-type DnsMsg struct {
-	Timestamp       string
-	SourceIP        string
-	DestinationIP   string
-	DnsQuery        string
-	DnsAnswer       []string
-	DnsAnswerTTL    []string
-	NumberOfAnswers string
-	DnsResponseCode string
-	DnsId           string
-	DnsOpCode       string
-}
-
 var (
-	intface    string
-	filename   string
-	devName    string
-	es_index   string
-	es_docType string
-	es_server  string
-	err        error
-	handle     *pcap.Handle
-	InetAddr   string
-	SrcIP      string
-	DstIP      string
-	SrcPort    string
-	DstPort    string
-	DnsServerPort string
-	VicPort string
-	srcIp string
-	dstIp string
+	handle       *pcap.Handle
+	eth 	     layers.Ethernet
+	ip4          layers.IPv4
+	ip6          layers.IPv6
+	tcp          layers.TCP
+	udp          layers.UDP
+	dns          layers.DNS
+	payload      gopacket.Payload
 )
 
 func stringInSlice(a string, list []string) bool {
@@ -55,143 +30,169 @@ func stringInSlice(a string, list []string) bool {
     return false
 }
 
-func captureLiveTraffic(interfaceName string, bpfFilter string, attacker map[string]string){
-	var (
-		device       string = ""
-		snapshot_len int32  = 1024
-		promiscuous  bool   = true
-		err          error
-		timeout      time.Duration = 1 * time.Second
-		handle       *pcap.Handle
-	)
 
-	devices, err := pcap.FindAllDevs()
-	if err != nil {
-		log.Fatal(err)
-	}
+func detectDnsAttemptOffline(pcapFile string, bpfFilter string){
+	if handle, err := pcap.OpenOffline(pcapFile); err != nil{
+		panic(err)
+	} else {
+		handle.SetBPFFilter(bpfFilter)
+		query_map := make(map[int]int)
+		response_map := make(map[int]int)
+		org_ans := make(map[int][]string)
+		timestamp_map := make(map[int]time.Time)
 
-	intface = devices[0].Name
-	device = intface
-	var eth layers.Ethernet
-	var ip4 layers.IPv4
-	var ip6 layers.IPv6
-	var tcp layers.TCP
-	var udp layers.UDP
-	var dns layers.DNS
-	var payload gopacket.Payload
+		packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
+  		for packet := range packetSource.Packets() {
+    		udpLayer := packet.Layer(layers.LayerTypeUDP)
+    		udp, _ := udpLayer.(*layers.UDP)   	
 
+    		dnsLayer := packet.Layer(layers.LayerTypeDNS)
+    	if(dnsLayer != nil){
+    		dns, _ := dnsLayer.(*layers.DNS)
+    		dnsId := int(dns.ID)
+    		last_timestamp := timestamp_map[dnsId]
+    		timestamp_map[dnsId] = packet.Metadata().Timestamp
 
-	// Open device
-	handle, err = pcap.OpenLive(device, snapshot_len, promiscuous, timeout)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer handle.Close()
-
-	//Setting BPF Filter
-	if bpfFilter != "nil" {
-		err = handle.SetBPFFilter(bpfFilter)
-		if err != nil {
-			fmt.Printf("---- Please enter BPF filter in accurate BPF syntax ----\n")
-			log.Fatal(err)
-		}
-	}
-
-	parser := gopacket.NewDecodingLayerParser(layers.LayerTypeEthernet, &eth, &ip4, &ip6, &tcp, &udp, &dns, &payload)
-
-	decodedLayers := make([]gopacket.LayerType, 0, 10)
-
-	query_map := make(map[int]int)
-	response_map := make(map[int]int)
-
-	hostnames := make([]string, 0, len(attacker))
-	for key, _ := range attacker {
-	    hostnames = append(hostnames, key)
-	}
-	
-	for {
-		data, _, err := handle.ReadPacketData()
-		if err != nil {
-			continue
-		}
-
-		err = parser.DecodeLayers(data, &decodedLayers)
-		for _, typ := range decodedLayers {
-			switch typ {
-				case layers.LayerTypeUDP:
-					VicPort = udp.SrcPort.String()
-					DnsServerPort = udp.DstPort.String()
-				case layers.LayerTypeIPv4:
-					srcIp = ip4.SrcIP.String()
-					dstIp = ip4.DstIP.String()
-				case layers.LayerTypeDNS:
-					dnsId := int(dns.ID)
-				
-				for _, dnsQuestion := range dns.Questions {
-					domain := string(dnsQuestion.Name)	
-					if(stringInSlice(domain, hostnames)){
-						nquery, found_query := query_map[dnsId]
-						nresponse, found_response := response_map[dnsId]
-						
-						if(udp.DstPort == 53){
-							if found_query {
-								query_map[dnsId] = nquery + 1
-							} else {
-								query_map[dnsId] = 1
-							}
-							
-						} else if(udp.DstPort != 53) {
-							if found_response {
-								response_map[dnsId] = nresponse + 1
-							} else {
-								response_map[dnsId] = 1
-							}
-						}
-						
-						fmt.Println(
-							fmt.Sprintf("Queries[%d] = %d",
-						 		dnsId, query_map[dnsId]))
-						fmt.Println(
-							fmt.Sprintf("Responses[%d] = %d",
-							 	dnsId, response_map[dnsId]))
-
-						if(response_map[dnsId] > query_map[dnsId]){
-							fmt.Println("**********Attack Detected**********")
-							fmt.Println(fmt.Sprintf("%d responses found against %d queries for the Transaction ID = %d",
-								response_map[dnsId], query_map[dnsId], dnsId ))
-							fmt.Println("-----Attack Summary-----")
-							fmt.Println(fmt.Sprintf("TRANSACTION ID: %d", dnsId))
-							fmt.Println(fmt.Sprintf("DOMAIN: %s", domain))
-							fmt.Println(fmt.Sprintf("VICTIM IP: %s", dstIp))
-							fmt.Println(fmt.Sprintf("DNS SERVER IP: %s", srcIp))
-							os.Exit(1)
-						}
+    		for _, dnsQuestion := range dns.Questions {
+				domain := string(dnsQuestion.Name)	
+				_, found_query := query_map[dnsId]
+				_, found_response := response_map[dnsId]		
+				if(udp.DstPort == 53){
+					if found_query {
+						query_map[dnsId] += 1
+					} else {
+						query_map[dnsId] = 1
+					}		
+				} else if(udp.DstPort != 53) {
+					if found_response {
+						response_map[dnsId] += 1
+					} else {
+						response_map[dnsId] = 1
+						org_ans[dnsId] = make([]string, 0, 10)
 					}
 				}
+				for _, dnsAnswer := range dns.Answers {
+					if dnsAnswer.IP.String() != "<nil>" {
+						org_ans[dnsId] = append(org_ans[dnsId], dnsAnswer.IP.String())
+					}
+				}
+				time_diff := last_timestamp.Sub(timestamp_map[dnsId])
+				if(response_map[dnsId] > query_map[dnsId] && time_diff < 1 * time.Second && org_ans[dnsId][0] != org_ans[dnsId][1]){
+					t := time.Now()
+					timestamp := t.Format(time.RFC3339)
+					fmt.Println(fmt.Sprintf("%s DNS poisoning attempt", timestamp))
+					fmt.Println(fmt.Sprintf("TXID: %s Request %s", []byte(strconv.FormatInt(int64(dnsId), 16)), domain))
+					fmt.Println(fmt.Sprintf("ANSWER 1: [%s]", org_ans[dnsId][0]))
+					fmt.Println(fmt.Sprintf("ANSWER 2: [%s]", org_ans[dnsId][1]))
+					os.Exit(1)
+				}
 			}
-		}
+    	}
 	}
+  	}
 }
 
-func main() {
-		bpfFilter := "udp"
-		interfaceName := "any"
-		data, err := ioutil.ReadFile("poisonhosts")
-  		if err != nil {
-    		fmt.Println("File reading error", err)
-    		return
-  		}
-  		lines := strings.Split(string(data), "\n")
-  		attacker := make(map[string]string)
-  		for index, element := range lines {
-    		_ = index
-    		hostname_and_attackerip := strings.Fields(element)
-    		if len(hostname_and_attackerip) == 0{
-    			break
-    		}
-    		attacker_ip := hostname_and_attackerip[0]
-    		hostname := hostname_and_attackerip[1]
-    		attacker[hostname] = attacker_ip
+
+func detectDnsAttemptOnline(interfaceName string, bpfFilter string){
+	devices, err := pcap.FindAllDevs()
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	handle, err = pcap.OpenLive(devices[0].Name, 1024, true, 1 * time.Second)
+	if err != nil {
+		fmt.Println(err)
+	}
+	
+	query_map := make(map[int]int)
+	response_map := make(map[int]int)
+	org_ans := make(map[int][]string)
+	timestamp_map := make(map[int]time.Time)
+
+	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
+  	for packet := range packetSource.Packets() {
+    	udpLayer := packet.Layer(layers.LayerTypeUDP)
+    	udp, _ := udpLayer.(*layers.UDP)   	
+
+    	dnsLayer := packet.Layer(layers.LayerTypeDNS)
+    	if(dnsLayer != nil){
+    		dns, _ := dnsLayer.(*layers.DNS)
+    		dnsId := int(dns.ID)
+    		last_timestamp := timestamp_map[dnsId]
+    		timestamp_map[dnsId] = packet.Metadata().Timestamp
+
+    		for _, dnsQuestion := range dns.Questions {
+				domain := string(dnsQuestion.Name)	
+				_, found_query := query_map[dnsId]
+				_, found_response := response_map[dnsId]		
+				if(udp.DstPort == 53){
+					if found_query {
+						query_map[dnsId] += 1
+					} else {
+						query_map[dnsId] = 1
+					}		
+				} else if(udp.DstPort != 53) {
+					if found_response {
+						response_map[dnsId] += 1
+					} else {
+						response_map[dnsId] = 1
+						org_ans[dnsId] = make([]string, 0, 10)
+					}
+				}
+				for _, dnsAnswer := range dns.Answers {
+					if dnsAnswer.IP.String() != "<nil>" {
+						org_ans[dnsId] = append(org_ans[dnsId], dnsAnswer.IP.String())
+					}
+				}
+				time_diff := last_timestamp.Sub(timestamp_map[dnsId])
+				if(response_map[dnsId] > query_map[dnsId] && time_diff < 1 * time.Second && org_ans[dnsId][0] != org_ans[dnsId][1]){
+					t := time.Now()
+					timestamp := t.Format(time.RFC3339)
+					fmt.Println(fmt.Sprintf("%s DNS poisoning attempt", timestamp))
+					fmt.Println(fmt.Sprintf("TXID: %s Request %s", []byte(strconv.FormatInt(int64(dnsId), 16)), domain))
+					fmt.Println(fmt.Sprintf("ANSWER 1: [%s]", org_ans[dnsId][0]))
+					fmt.Println(fmt.Sprintf("ANSWER 2: [%s]", org_ans[dnsId][1]))
+					os.Exit(1)
+				}
+			}
     	}
-		captureLiveTraffic(interfaceName, bpfFilter, attacker)
+  	}
+}
+
+
+func main() {
+	commandLineArgs := os.Args
+	bpfFilter := "udp"
+	interfaceName := "all"
+	pcapFile := ""
+	if len(commandLineArgs) < 1 {
+			fmt.Println("Usage:\nsudo go run dnsdetect.go [-i interface] [-r pcap] expression")
+			fmt.Println("-i flag expects interface name")
+			fmt.Println("-r flag expects .pcap file")
+		} else {
+			mode := "online"
+			if(stringInSlice("-i", commandLineArgs)){
+				mode = "online"
+			} 
+			if(stringInSlice("-r", commandLineArgs)){
+				mode = "offline"
+			}
+			for i, _ := range commandLineArgs{
+				if(i == 0){
+					continue
+				}
+				if(commandLineArgs[i] == "-r"){
+					pcapFile = commandLineArgs[i+1]
+				}
+				if(commandLineArgs[i] == "-i"){
+					interfaceName = commandLineArgs[i+1]
+				}
+			}
+			if(mode == "online"){
+				detectDnsAttemptOnline(interfaceName, bpfFilter)
+			} 
+			if(mode == "offline"){
+				detectDnsAttemptOffline(pcapFile, bpfFilter)
+			}
+		}
 }

