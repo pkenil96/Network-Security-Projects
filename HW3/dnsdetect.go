@@ -59,6 +59,7 @@ func detectDnsAttackAttempt(source string, expression string, mode string){
 	org_ans := make(map[int][]string)
 	timestamp_map := make(map[int]time.Time)
 
+	detected := false
 	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
   	for packet := range packetSource.Packets() {
     	udpLayer := packet.Layer(layers.LayerTypeUDP)
@@ -96,18 +97,21 @@ func detectDnsAttackAttempt(source string, expression string, mode string){
 				}
 				time_diff := last_timestamp.Sub(timestamp_map[dnsId])
 				if(response_map[dnsId] > query_map[dnsId] && time_diff < 2 * time.Second && len(org_ans) > 1 && org_ans[dnsId][0] != org_ans[dnsId][1]){
+					detected = true
 					t := time.Now()
 					timestamp := t.Format(time.RFC3339)
 					fmt.Println(fmt.Sprintf("%s DNS POISONING ATTEMPT", timestamp))
 					fmt.Println(fmt.Sprintf("TXID: %s Request %s", []byte(strconv.FormatInt(int64(dnsId), 16)), domain))
 					fmt.Println(fmt.Sprintf("ANSWER 1: [%s]", org_ans[dnsId][0]))
 					fmt.Println(fmt.Sprintf("ANSWER 2: [%s]", org_ans[dnsId][1]))
-					os.Exit(1)
+					if(mode=="online"){
+						os.Exit(1)
+					}
 				}
 			}
     	}
   	}
-  	if(mode == "offline"){
+  	if(mode == "offline" && detected == false){
 		fmt.Println("NO ATTACK DETECTED IN GIVEN PCAP")
 	}
 }
