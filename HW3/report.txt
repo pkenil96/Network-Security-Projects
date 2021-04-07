@@ -1,0 +1,51 @@
+dnspoison.go and dnsdetect.go are the two programs implemented as part of homework 3.
+
+dnspoison.go - This program sniffs the traffic in promiscious mode and filters the hostnames mentioned in the hostname file. The attacker's ip is also specified against the hostnames in the file. In case the hostname file is not specified, the program poisons all the domains it sees.
+
+dnsdetect.go - This program also sniffs the network traffic. However, it tries to find if there was a dns spoofing attack on the network. It does so by checking if there were more number of responses than queries for a given transaction id in a given interval of time and the subsequent responses had different information. In such a case, the detector flags it as dns spoofing attack.
+
+
+NOTE:
+1) Please run the program with sudo
+2) In case poisonhosts file is not provided, the dnspoison.go will spoof all domains and use the ip of the same machine as attacker's ip.
+
+
+Sample Outputs:
+
+CASE 1: NO ATTACK ATTEMPTED, OFFLINE MODE (reading from saved pcap)
+
+command:
+sudo go run dnsdetect.go -r noattack.pcap
+
+output:
+NO ATTACK DETECTED IN GIVEN PCAP
+----------------------------------------------------------------------
+CASE 2: ATTACK ATTEMPTED, OFFLINE MODE (reading from saved pcap)
+
+command:
+sudo go run dnsdetect.go -r attack.pcap
+
+output:
+2021-04-06T12:38:25-04:00 DNS poisoning attempt
+TXID: 8d0e Request www.apple.com
+ANSWER 1: [184.24.151.145]
+ANSWER 2: [172.24.18.143]
+----------------------------------------------------------------------
+CASE 3: NO ATTACK ATTEMPTED, ONLINE MODE (reading from live interface)
+
+command:
+sudo go run dnsdetect.go -i vmnet8
+
+output:
+----------------------------------------------------------------------
+CASE 4: ATTACK ATTEMPTED, ONLINE MODE (reading from live interface)
+
+command:
+sudo go run dnsdetect.go -i vmnet8
+
+output:
+2021-04-06T12:38:25-04:00 DNS poisoning attempt
+TXID: 8d0e Request www.apple.com
+ANSWER 1: [184.24.151.145]
+ANSWER 2: [172.24.18.143]
+----------------------------------------------------------------------
