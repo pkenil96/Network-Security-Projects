@@ -1,0 +1,94 @@
+Plugboard Proxy - HW4
+
+**********************
+Kenil Patel
+SBU ID: 113262209
+**********************
+
+Implementation details
+----------------------
+
+This homework contains one source file named pbproxy.go which is the main program that runs the plugboard proxy. The plugboard proxy that I have developed for this homwework runs in two modes: client mode(acts as forward proxy) and server mode(acts as reverse proxy) based on the arguments passed to the pbproxy.go program.
+
+-------------------------------
+Client Mode (aka forward proxy)
+-------------------------------
+
+kenil@kenil-ubuntu-vm:~/Desktop/netsec$ go run pbproxy.go -p passphrase.txt 127.0.0.1 2222
+Hey There
+
+
+Whenever pbproxy.go is run without the -l flag, it will run in the client mode, wherein it will listen for incoming messages from client which are redirected to the destination server. It will encrypt them and forward it to the pbproxy server (another instance of pbproxy running in reverse proxy mode on the same machine as the destination server). At the same time, the data that is received on the socket is written back to the stdout. This ensures that any traffic that is destined towards the target server gets encrypted at the pbproxy client using the passphrase provided and it can be decrypted only at the pbproxy server which already contains the same passphrase used for encryption. In this way we successfully add an extra layer of protection between the client and the destination server.
+
+
+Steps:
+1) Listen for incoming messages in infinite loop
+2) When data is received from stdin, it is encrypted and forwarded to the pbproxy server
+
+------------------
+Reverse Proxy Mode
+------------------
+
+kenil@kenil-ubuntu-vm:~/Desktop/netsec$  go run pbproxy.go -l 2222 -p passphrase.txt localhost 12345
+Listening on: 127.0.0.1:2222
+2021/05/03 22:39:45 [127.0.0.1:60228]: Connection established (when the pbproxy client starts)
+
+
+Whenever pbproxy.go is run with the -l flag, it will run in the reverse proxy mode, wherein it will listen for incoming encrypted messages from the pbproxy client and decrypt it using the passphrase provided (same as what was provided at the pbproxy client) and then forward the plaintext message to the destined server. Any data that was not encrypted properly would turn into garbage when the pbproxy server will try to decrypt it. In this way it is ensured that only the encrypted traffic that originated from the pbproxy client gets delivered to server and the rest gets turned to garbage.
+
+Steps:
+1) Listen for incoming data on the specified port
+2) Whenever data is received from the pbproxy, it is decrypted and forwarded to server
+
+
+Encryption/Decryption
+---------------------
+For encryption and decryption, I have used PBKDF2 which helps in generating an encryption key of desired length, based on the passphrase provided. The generated key is then used to encrypt the block of data and the nonce(random number used just once to avoid replay attacks) is packed along with the encrypted data and sent to the server. (In our case, the decrypted message will be displayed at the pbproxy_server itself. However it can be forwarded to any other server.)
+
+
+Bidirectional Transfer
+----------------------
+In order to achieve bidirectional transfer, I have used the goroutines. I have used two goroutines in the sendData function. One thread handles reading the data from stdin and and the other thread writes the decrypted data to the stdout. There are two functions clientChannel and serverChannel, one for handling reading and writing to and from the client to pbproxy_client and from pbproxy_client to destination server, respectively.
+
+
+SSH Test Case
+-------------
+
+Run pbproxy server to listen on 22:
+Command: 
+go run pbproxy.go -l 2222 -p passphrase.txt 127.0.0.1 22
+
+Connect to the client using the command:
+
+Command:
+ssh -o "ProxyCommand go run pbproxy.go -p passphrase.txt 192.168.75.141 2222" localhost
+kenil@localhost's password: 
+Welcome to Ubuntu 20.04.2 LTS (GNU/Linux 5.8.0-50-generic x86_64)
+
+ * Documentation:  https://help.ubuntu.com
+ * Management:     https://landscape.canonical.com
+ * Support:        https://ubuntu.com/advantage
+
+84 updates can be installed immediately.
+0 of these updates are security updates.
+To see these additional updates run: apt list --upgradable
+
+Failed to connect to https://changelogs.ubuntu.com/meta-release-lts. Check your Internet connection or proxy settings
+
+Your Hardware Enablement Stack (HWE) is supported until April 2025.
+Last login: Mon May  3 22:46:22 2021 from 127.0.0.1
+
+
+
+* This will establish ssh connection with the destination server tunneling the traffic via the pbproxy. In this way, not just the messages that we sent, but any data transfer that takes place using ssh will be encrypted by our plugboard proxy. Any command issued from the client, e.g. ls -l will be routed through the pbproxy, get encrypted at pbproxy_client, decrypted at pbproxy_server and then run at the server and the output returned by the ls -l command will be displayed on the server.
+
+* The pbproxy server will continue to listen for incoming connections even when the previous session has terminated.
+
+
+References:
+https://cryptobook.nakov.com/symmetric-key-ciphers/cipher-block-modes
+https://pkg.go.dev/net
+https://pkg.go.dev/crypto/cipher
+https://pkg.go.dev/golang.org/x/crypto/pbkdf2
+https://www.melvinvivas.com/how-to-encrypt-and-decrypt-data-using-aes/
+https://tutorialedge.net/golang/go-encrypt-decrypt-aes-tutorial/
